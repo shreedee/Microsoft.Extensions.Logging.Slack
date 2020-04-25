@@ -1,46 +1,29 @@
 ﻿using System;
 using System.Net.Http;
 using System.Text;
-using Microsoft.AspNetCore.Hosting;
 using Newtonsoft.Json;
 
 namespace Microsoft.Extensions.Logging.Slack
 {
 	public class SlackLogger : ILogger
 	{
-		private readonly Uri webhookUri;
 		private readonly HttpClient httpClient;
 		private readonly string applicationName;
 		private readonly string environmentName;
-		private readonly string name;
-		private Func<string, LogLevel, Exception, bool> filter;
+		readonly SlackConfiguration _configuration;
+		readonly string _categoryName;
 
-		public SlackLogger(string name, Func<string, LogLevel, Exception, bool> filter, 
+		public SlackLogger(string categoryName, 
 									HttpClient httpClient, 
 									string environmentName, 
-									string applicationName, 
-									Uri webhookUri)
+									string applicationName,
+									SlackConfiguration configuration)
 		{
-			Filter = filter ?? ((category, logLevel, exception) => true);
 			this.environmentName = environmentName;
 			this.applicationName = applicationName;
-			this.webhookUri = webhookUri;
-			this.name = name;
+			_configuration = configuration;
+			_categoryName = categoryName;
 			this.httpClient = httpClient;
-		}
-
-		private Func<string, LogLevel, Exception, bool> Filter
-		{
-			get { return filter; }
-			set
-			{
-				if (value == null)
-				{
-					throw new ArgumentNullException(nameof(value));
-				}
-
-				filter = value;
-			}
 		}
 
 		/// <summary>
@@ -63,6 +46,8 @@ namespace Microsoft.Extensions.Logging.Slack
 				throw new ArgumentNullException(nameof(formatter));
 			}
 
+			var title = formatter(state, exception);
+
 			var color = "good";
 
 			switch (logLevel)
@@ -82,19 +67,16 @@ namespace Microsoft.Extensions.Logging.Slack
 					break;
 			}
 
-			var title = formatter(state, exception);
-			var exceptinon = exception?.ToString();
-
-			var obj = new
+			var logObj = null != _configuration.slackFormatter? _configuration.slackFormatter(title,_categoryName, logLevel, exception) : new
 			{
 				attachments = new[]
 				{
 					new
 					{
-						fallback = $"[{applicationName}] [{environmentName}] [{name}] [{title}].",
+						fallback = $"[{applicationName}] [{environmentName}] [{_categoryName}] [{title}].",
 						color,
-						title,
-						text = exceptinon,
+						title = $"v1.4 : {title}",
+						text = exception?.ToString(),
 						fields = new[]
 						{
 							new
@@ -114,7 +96,22 @@ namespace Microsoft.Extensions.Logging.Slack
 				}
 			};
 
-			httpClient.PostAsync(this.webhookUri,new StringContent(JsonConvert.SerializeObject(obj), Encoding.UTF8, "application/json")).Wait();
+			var jsondata = JsonConvert.SerializeObject(logObj);
+
+			var posted = httpClient.PostAsync(_configuration.webhookUrl,new StringContent(jsondata, Encoding.UTF8, "application/json")).Result;
+
+			if(!posted.IsSuccessStatusCode)
+			{
+				Console.Error.WriteLine($"failed json: {jsondata}");
+
+				var error = $"crit: Failed with Status code {posted.StatusCode} : ";
+				try
+				{
+					error += posted.Content.ReadAsStringAsync().Result;
+				}
+				catch { }
+				Console.Error.WriteLine(error);
+			}
 		}
 
 		/// <summary>
@@ -129,7 +126,7 @@ namespace Microsoft.Extensions.Logging.Slack
 
 		public bool IsEnabled(LogLevel logLevel, Exception exc)
 		{
-			return Filter(name, logLevel, exc);
+			return null == _configuration.filter ? logLevel >= _configuration.MinLevel : _configuration.filter(_categoryName, logLevel, exc);
 		}
 
 		/// <summary>

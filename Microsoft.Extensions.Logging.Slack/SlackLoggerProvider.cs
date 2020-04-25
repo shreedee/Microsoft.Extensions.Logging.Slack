@@ -9,15 +9,13 @@ namespace Microsoft.Extensions.Logging.Slack
 		private readonly string applicationName;
 		private readonly SlackConfiguration configuration;
 		private readonly string environmentName;
-		private readonly Func<string, LogLevel, Exception, bool> filter;
+		
 		private readonly HttpClient httpClient;
 
-		public SlackLoggerProvider(Func<string, LogLevel, Exception, bool> filter, 
-											SlackConfiguration configuration, 
+		public SlackLoggerProvider(SlackConfiguration configuration, 
 											HttpClient httpClient,
 			string applicationName, string environmentName)
 		{
-			this.filter = filter;
 			this.configuration = configuration;
 			this.httpClient = httpClient ?? new HttpClient();
 			this.applicationName = applicationName;
@@ -35,7 +33,7 @@ namespace Microsoft.Extensions.Logging.Slack
 		/// <returns></returns>
 		public ILogger CreateLogger(string categoryName)
 		{
-			return new SlackLogger(categoryName, filter, httpClient, environmentName, applicationName, configuration.WebhookUrl);
+			return new SlackLogger(categoryName, httpClient, environmentName, applicationName, configuration);
 		}
 	}
 }
