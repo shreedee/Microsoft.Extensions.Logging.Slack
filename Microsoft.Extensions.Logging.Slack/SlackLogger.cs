@@ -98,19 +98,26 @@ namespace Microsoft.Extensions.Logging.Slack
 
 			var jsondata = JsonConvert.SerializeObject(logObj);
 
-			var posted = httpClient.PostAsync(_configuration.webhookUrl,new StringContent(jsondata, Encoding.UTF8, "application/json")).Result;
-
-			if(!posted.IsSuccessStatusCode)
+			try
 			{
-				Console.Error.WriteLine($"failed json: {jsondata}");
+				var posted = httpClient.PostAsync(_configuration.webhookUrl, new StringContent(jsondata, Encoding.UTF8, "application/json")).Result;
 
-				var error = $"crit: Failed with Status code {posted.StatusCode} : ";
-				try
+				if (!posted.IsSuccessStatusCode)
 				{
-					error += posted.Content.ReadAsStringAsync().Result;
+					Console.Error.WriteLine($"failed json: {jsondata}");
+
+					var error = $"crit: Failed with Status code {posted.StatusCode} : ";
+					try
+					{
+						error += posted.Content.ReadAsStringAsync().Result;
+					}
+					catch { }
+					Console.Error.WriteLine(error);
 				}
-				catch { }
-				Console.Error.WriteLine(error);
+			}
+			catch(Exception ex)
+			{
+				throw new Exception($"failed to post to slack url -> {_configuration.webhookUrl}, data -> {jsondata}", ex);
 			}
 		}
 
